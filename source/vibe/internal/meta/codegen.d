@@ -359,3 +359,57 @@ unittest
 	// any mismatch in types between class and interface will be a compile-time
 	// error, no extra asserts needed
 }
+
+
+/**
+	Returns in a string usable to mix in a set of variables matching the
+	parameters of the given function or method.
+*/
+template parametersAsVariables(alias Symbol)
+	if (isSomeFunction!(Symbol))
+{
+	private:
+		import std.traits, std.typetuple;
+
+		alias FunctionTypeOf!(Symbol) T;
+
+		static if (is(T F == delegate) || isFunctionPointer!T)
+			static assert(0, "Plain function or method symbols are expected");
+		
+		string parametersString(alias T)()
+		{
+			if (!__ctfe)
+				assert(false);
+			
+			alias ParameterTypeTuple!T parameters;
+			alias ParameterStorageClassTuple!T parameterStC;
+			alias ParameterIdentifierTuple!T parameterNames;
+			
+			final switch (variadicFunctionStyle!T) {
+				case Variadic.no: break;
+				case Variadic.c: assert(false, "C style variadic functions cannot be mapped to variables.");
+				case Variadic.d: assert(false, "D style variadic functions cannot be mapped to variables.");
+				case Variadic.typesafe: break;
+			}
+
+			string result;
+			foreach (i, p; parameters)
+				result ~= format("%s %s;\n", fullyQualifiedName!(parameters[i]), parameterNames[i]);
+			
+			return result;
+		}
+
+	public {
+		import std.string : format;
+
+		enum string parametersAsVariables = parametersString!Symbol();
+	}
+}
+
+///
+unittest
+{
+	static int foo(double[] param);
+
+	static assert(parametersAsVariables!foo == "double[] param;\n");
+}

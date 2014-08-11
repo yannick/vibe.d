@@ -1,7 +1,7 @@
 /**
 	Automatic REST interface and client code generation facilities.
 
-	Copyright: © 2012-2013 RejectedSoftware e.K.
+	Copyright: © 2012-2014 RejectedSoftware e.K.
 	License: Subject to the terms of the MIT license, as written in the included LICENSE.txt file.
 	Authors: Sönke Ludwig, Михаил Страшун
 */
@@ -327,59 +327,50 @@ class RestInterfaceClient(I) : I
 	protected {
 		import vibe.data.json : Json;
 		import vibe.textfilter.urlencode;
-	
-		Json request(string verb, string name, Json params, bool[string] param_is_json) const
+
+		RET request(HTTPMethod verb, RET, PARAMS)(string url_pattern, PARAMS params)
 		{
-			import vibe.http.client : HTTPClientRequest, HTTPClientResponse,
-				requestHTTP;
-			import vibe.http.common : HTTPStatusException, HTTPStatus,
-				httpMethodFromString, httpStatusText;
-			import vibe.inet.url : Path;
-			import std.array : appender;
+			alias paramTypes = FieldTypes!PARAMS;
+			alias paramNames = FieldNames!PARAMS;
 
 			URL url = m_baseURL;
-
-			if (name.length) url ~= Path(name);
-			
-			if ((verb == "GET" || verb == "HEAD") && params.length > 0) {
-				auto query = appender!string();
-				bool first = true;
-
-				foreach (string pname, p; params) {
-					if (!first) {
-						query.put('&');
-					}
-					else {
-						first = false;
-					}
-					filterURLEncode(query, pname);
-					query.put('=');
-					filterURLEncode(query, param_is_json[pname] ? p.toString() : toRestString(p));
-				}
-
-				url.queryString = query.data();
+			static if (paramNames.length > 0 && paramNames[0] == "id") {
+				url ~= params.tupleof[0];
 			}
-			
-			Json ret;
+			if (url_pattern.length) {
+				// FIXME: handle _params!!
+				url ~= Path(url_pattern);
+			}
+
+			enum has_body = verb != HTTPMethod.GET && verb != HTTPMethod.HEAD;
+
+
+			static if (!has_body) {
+				static if (PARAMS.tupleof.length > 0) {
+					FormFields query;
+					alias PFIELDS = TypeTuple!(PARAMS.tupleof);
+					foreach (i, PT; typeof(PARAMS.tupleof))
+						query.writeFormParamRec(params[i], __traits(identifier, PFIELDS[i]));
+					url.queryString = formEncode(query);
+				}
+			}
+
+			RET ret;
 
 			auto reqdg = (scope HTTPClientRequest req) {
-				req.method = httpMethodFromString(verb);
-
-				if (m_requestFilter) {
-					m_requestFilter(req);
-				}
-
-				if (verb != "GET" && verb != "HEAD") {
-					req.writeJsonBody(params);
-				}
+				req.method = verb;
+				if (m_requestFilter) m_requestFilter(req);
+				// FIXME: exclude _params and id!!
+				static if (has_body) req.writeJsonBody(params);
 			};
 			
 			auto resdg = (scope HTTPClientResponse res) {
-				ret = res.readJson();
+				// TODO: directly deserialize the JSON string
+				ret = deserializeJson!RET(res.readJson());
 
 				logDebug(
 					"REST call: %s %s -> %d, %s",
-					verb,
+					httpMethodString(verb),
 					url.toString(),
 					res.statusCode,
 					ret.toString()
@@ -488,20 +479,14 @@ private HTTPServerRequestDelegate jsonMethodHandler(T, string method, alias Func
 					alias DefVal = ParamDefaults[i];
 					if (req.method == HTTPMethod.GET) {
 						logDebug("query %s of %s" ,ParamNames[i], req.query);
-						
-						static if (is (DefVal == void)) {
-							enforce(
-								ParamNames[i] in req.query,
-								format("Missing query parameter '%s'", ParamNames[i])
-							);
-						} else {
-							if (ParamNames[i] !in req.query) {
-								params[i] = DefVal;
-								continue;
-							}
-						}
 
-						params[i] = fromRestString!P(req.query[ParamNames[i]]);
+
+						static if (is (DefVal == void)) {
+							readFormParamRec(req, params[i], ParamNames[i], true);
+						} else {
+							if (!readFormParamRec(req, params[i], ParamNames[i], false))
+								params[i].setVoid(DefVal);
+						}
 					} else {
 						logDebug("%s %s", method, ParamNames[i]);
 
@@ -720,12 +705,12 @@ private string generateRestInterfaceMethods(I)()
 		assert(false);
 
 	import std.traits : MemberFunctionsTuple, FunctionTypeOf,
-		ReturnType, ParameterTypeTuple, ParameterIdentifierTuple;
+		ReturnType, ParameterTypeTuple, ParameterIdentifierTuple, fullyQualifiedName;
 	import std.string : format;
 	import std.algorithm : canFind, startsWith;
-	import std.array : split;
+	import std.array : split, join;
 
-	import vibe.internal.meta.codegen : cloneFunction;
+	import vibe.internal.meta.codegen : cloneFunction, parametersAsVariables;
 	import vibe.internal.meta.funcattr : IsAttributedParameter;
 	import vibe.http.server : httpMethodString;
 	
@@ -733,15 +718,12 @@ private string generateRestInterfaceMethods(I)()
 
 	foreach (method; __traits(allMembers, I)) {
 		foreach (overload; MemberFunctionsTuple!(I, method)) {
-
 			alias FT = FunctionTypeOf!overload;
 			alias RT = ReturnType!FT;
 			alias PTT = ParameterTypeTuple!overload;
 			alias ParamNames = ParameterIdentifierTuple!overload;
 
 			enum meta = extractHTTPMethodAndName!overload();
-			
-			// NB: block formatting is coded in dependency order, not in 1-to-1 code flow order
 			
 			static if (is(RT == interface)) {
 				ret ~= format(
@@ -754,114 +736,25 @@ private string generateRestInterfaceMethods(I)()
 					RT.stringof
 				);
 			} else {
-				string param_handling_str;
-				string url_prefix = `""`;
-				
-				// Block 2
-				foreach (i, PT; PTT){
-					static assert (
-						ParamNames[i].length,
-						format(
-							"Parameter %s of %s has no name.",
-							 i,
-							 method
-						)
-					);
-					
-					// legacy :id special case, left for backwards-compatibility reasons
-					static if (i == 0 && ParamNames[0] == "id") {
-						static if (is(PT == Json))
-							url_prefix = q{urlEncode(id.toString())~"/"};
-						else
-							url_prefix = q{urlEncode(toRestString(serializeToJson(id)))~"/"};
-					}
-					else static if (
-						!ParamNames[i].startsWith("_") &&
-						!IsAttributedParameter!(overload, ParamNames[i])
-					) {
-						// underscore parameters are sourced from the HTTPServerRequest.params map or from url itself
-						param_handling_str ~= format(
-							q{
-								jparams__["%s"] = serializeToJson(%s);
-								jparamsj__["%s"] = %s;
-							},
-							ParamNames[i],
-							ParamNames[i],
-							ParamNames[i],
-							is(PT == Json) ? "true" : "false"
-						);
-					}
-				}
-				
-				// Block 3
-				string request_str;
-				
-				static if (!meta.hadPathUDA) {
-					request_str = format(
-						q{
-							url__ = %s ~ adjustMethodStyle(url__, m_methodStyle);
-						},
-						url_prefix
-					);
-				} else {
-					auto parts = meta.url.split("/");
-					request_str ~= `url__ = ` ~ url_prefix;
-					foreach (i, p; parts) {
-						if (i > 0) {
-							request_str ~= `~ "/"`;
-						}
-						bool match = false;
-						if (p.startsWith(":")) {
-							foreach (pn; ParamNames) {
-								if (pn.startsWith("_") && p[1 .. $] == pn[1 .. $]) {
-									request_str ~= format(
-										q{ ~ urlEncode(toRestString(serializeToJson(%s)))},
-										pn
-									);
-									match = true;
-									break;
-								}
-							}
-						}
+				string url_mixin = '"'~meta.url~'"';
+				static if (meta.hadPathUDA)
+					url_mixin = "adjustMethodStyle("~url_mixin~", m_methodStyle)";
 
-						if (!match) {
-							request_str ~= `~ "` ~ p ~ `"`;
-						}
-					}
+				string param_names;
+				static if (ParamNames.length) param_names = [ParamNames].join(", ");
 
-					request_str ~= ";\n";
-				}
-				
-				request_str ~= format(
-					q{
-						auto jret__ = request("%s", url__ , jparams__, jparamsj__);
-					},
-					httpMethodString(meta.method)
-				);
-				
-				static if (!is(ReturnType!overload == void)) {
-					request_str ~= q{
-						typeof(return) ret__;
-						deserializeJson(ret__, jret__);
-						return ret__;
-					};
-				}
-				
-				// Block 1
 				ret ~= format(
 					q{
 						override %s {
-							Json jparams__ = Json.emptyObject;
-							bool[string] jparamsj__;
-							string url__ = "%s";
-							%s
-								%s
+							static struct _PARAMS { %s }
+							_PARAMS _params = {%s};
+							return request!(HTTPMethod.%s, %s)(%s, _params);
 						}
 					},
 					cloneFunction!overload,
-					meta.url,
-					param_handling_str,
-					request_str
+					parametersAsVariables!overload,
+					param_names,
+					meta.method.to!string, fullyQualifiedName!RT, url_mixin
 				);
 			}
 		}
