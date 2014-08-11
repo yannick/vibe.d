@@ -560,7 +560,7 @@ package bool readFormParamRec(T)(HTTPServerRequest req, ref T dst, string fieldn
 		dst = T.init;
 		while (true) {
 			EL el = void;
-			if (!readFormParamRec(req, el, format("%s_%s", fieldname, idx), false))
+			if (!readFormParamRec(req, el, format("%s[%s]", fieldname, idx), false))
 				break;
 			dst ~= el;
 			idx++;
@@ -571,8 +571,8 @@ package bool readFormParamRec(T)(HTTPServerRequest req, ref T dst, string fieldn
 			dst.setVoid(el);
 		else dst.setVoid(T.init);
 	} else static if (is(T == struct) && !is(typeof(T.fromString(string.init))) && !is(typeof(T.fromStringValidate(string.init, null)))) {
-		foreach (m; __traits(allMembers, T))
-			if (!readFormParamRec(req, __traits(getMember, dst, m), fieldname~"_"~m, required))
+		foreach (i, M; typeof(T.tupleof))
+			if (!readFormParamRec(req, T.tupleof[i], format("%s.%s", fieldname, __traits(identifier, T.tupleof[i])), required))
 				return false;
 	} else static if (is(T == bool)) {
 		dst = (fieldname in req.form) !is null || (fieldname in req.query) !is null;
@@ -581,6 +581,23 @@ package bool readFormParamRec(T)(HTTPServerRequest req, ref T dst, string fieldn
 	else if (required) throw new HTTPStatusException(HTTPStatus.badRequest, "Missing parameter "~fieldname);
 	else return false;
 	return true;
+}
+
+package void writeFormParamRec(T)(ref FormFields dst, in ref T src, string fieldname)
+{
+	static if (isDynamicArray!T && !isSomeString!T) {
+		alias EL = typeof(T.init[0]);
+		size_t idx = 0;
+		foreach (i, el; src)
+			writeFormParamRec(dst, el, format("%s[%s]", fieldname, i));
+	} else static if (isNullable!T) {
+		if (!src.isNull()) writeFormParamRec(dst, src.get(), fieldname);
+	} else static if (is(T == struct) && !is(typeof(T.fromString(string.init))) && !is(typeof(T.fromStringValidate(string.init, null)))) {
+		foreach (i, M; typeof(T.tupleof))
+			writeFormParamRec(dst, T.tupleof[i], format("%s.%s", fieldname, __traits(identifier, T.tupleof[i])));
+	} else static if (is(T == bool)) {
+		if (src) dst[fieldname] = "";
+	} else dst[fieldname] = webConvFrom(src);
 }
 
 package T webConvTo(T)(string str)
@@ -597,6 +614,18 @@ package T webConvTo(T)(string str)
 		static assert(is(typeof(T.fromString(str)) == T));
 		return T.fromString(str);
 	} else return str.to!T();
+}
+
+package string webConvFrom(T)(T val)
+{
+	import std.conv;
+	import std.exception;
+	string error;
+	static if (is(typeof(T.fromStringValidate(string.init, &error)))) {
+		return val.toString();
+	} else static if (is(typeof(T.fromString(string.init)))) {
+		return val.toString();
+	} else return val.to!string();
 }
 
 // properly sets an uninitialized variable
