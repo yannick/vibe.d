@@ -30,7 +30,10 @@ matrix:
       env: VIBED_DRIVER=libasync
 
 script:
-  - dub test :base --compiler=$DC --config=${VIBED_DRIVER}
+  - dub test --compiler=$DC --config=${VIBED_DRIVER}
+  - dub test :utils --compiler=$DC --config=${VIBED_DRIVER}
+  - dub test :data --compiler=$DC --config=${VIBED_DRIVER}
+  - dub test :core --compiler=$DC --config=${VIBED_DRIVER}
   - dub test :mail --compiler=$DC --config=${VIBED_DRIVER}
   - dub test :http --compiler=$DC --config=${VIBED_DRIVER}
   - dub test :diet --compiler=$DC --config=${VIBED_DRIVER}
