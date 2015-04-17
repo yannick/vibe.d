@@ -895,7 +895,6 @@ Json parseJson(R)(ref R range, int* line = null, string filename = null)
 	skipWhitespace(range, line);
 
 	version(JsonLineNumbers) {
-		import vibe.core.log;
 		int curline = line ? *line : 0;
 	}
 
@@ -1731,10 +1730,6 @@ struct JsonStringSerializer(R, bool pretty = false)
 		{
 			m_range.skipWhitespace(&m_line);
 			if (m_range.front != 'n') return false;
-			static if (is(R == string)) {
-				import vibe.core.log;
-				logInfo("%s", m_range[0 .. min(4, $)]);
-			}
 			foreach (ch; "null") {
 				enforceJson(m_range.front == ch, "Expecting 'null'.");
 				m_range.popFront();
