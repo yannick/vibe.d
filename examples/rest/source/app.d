@@ -7,9 +7,9 @@
 import vibe.appmain;
 import vibe.core.core;
 import vibe.core.log;
-import vibe.http.rest;
 import vibe.http.router;
 import vibe.http.server;
+import vibe.web.rest;
 
 import core.time;
 
@@ -41,7 +41,7 @@ interface Example1API
 	int postSum(int a, int b);
 
 	/* @property getters are always GET. @property setters are always PUT.
-	 * All supported convention prefixes are documentated : http://vibed.org/api/vibe.http.rest/registerRestInterface
+	 * All supported convention prefixes are documentated : http://vibed.org/api/vibe.web.rest/registerRestInterface
 	 * Rather obvious and thus omitted in this example interface.
 	 */
 	@property string getter();
@@ -214,7 +214,7 @@ unittest
 @rootPathFromName
 interface Example4API
 {
-	/* vibe.http.rest module provides two pre-defined UDA - @path and @method
+	/* vibe.web.rest module provides two pre-defined UDA - @path and @method
 	 * You can use any one of those or both. In case @path is used, not method style
 	 * adjustment is made.
 	 */
@@ -284,7 +284,7 @@ unittest
 @rootPathFromName
 interface Example5API
 {
-	import vibe.http.rest : before, after;
+	import vibe.web.rest : before, after;
 
 	@before!authenticate("user") @after!addBrackets()
 	string getSecret(int num, User user);
