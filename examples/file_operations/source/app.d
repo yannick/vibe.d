@@ -1,5 +1,7 @@
-import vibe.d;
+import vibe.core.core;
+import vibe.core.file;
 import std.stdio;
+
 shared static this()
 {
 	FileStream fs = openFile("./hello.txt", FileMode.createTrunc);
