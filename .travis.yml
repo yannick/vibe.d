@@ -30,16 +30,16 @@ matrix:
       env: VIBED_DRIVER=libasync
 
 script:
-  - dub test --compiler=$DC --config=${VIBED_DRIVER}
-  - dub test :utils --compiler=$DC --config=${VIBED_DRIVER}
-  - dub test :data --compiler=$DC --config=${VIBED_DRIVER}
+  - dub test --compiler=$DC #--config=${VIBED_DRIVER}
+  - dub test :utils --compiler=$DC #--config=${VIBED_DRIVER}
+  - dub test :data --compiler=$DC #--config=${VIBED_DRIVER}
   - dub test :core --compiler=$DC --config=${VIBED_DRIVER}
-  - dub test :mail --compiler=$DC --config=${VIBED_DRIVER}
-  - dub test :http --compiler=$DC --config=${VIBED_DRIVER}
-  - dub test :diet --compiler=$DC --config=${VIBED_DRIVER}
-  - dub test :web --compiler=$DC --config=${VIBED_DRIVER}
-  - dub test :mongodb --compiler=$DC --config=${VIBED_DRIVER}
-  - dub test :redis --compiler=$DC --config=${VIBED_DRIVER}
+  - dub test :mail --compiler=$DC #--config=${VIBED_DRIVER}
+  - dub test :http --compiler=$DC #--config=${VIBED_DRIVER}
+  - dub test :diet --compiler=$DC #--config=${VIBED_DRIVER}
+  - dub test :web --compiler=$DC #--config=${VIBED_DRIVER}
+  - dub test :mongodb --compiler=$DC #--config=${VIBED_DRIVER}
+  - dub test :redis --compiler=$DC #--config=${VIBED_DRIVER}
   - if [ ${VIBED_DRIVER} == "libevent" ]; then
       for ex in `\ls -1 examples/`; do (echo "[INFO] Building example $ex"; cd examples/$ex && dub build --compiler=$DC) || exit 1; done
     fi
