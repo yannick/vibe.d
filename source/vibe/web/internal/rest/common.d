@@ -287,8 +287,8 @@ import vibe.web.rest;
 	private template GetSubInterfaceFunctions() {
 		template Impl(size_t idx) {
 			static if (idx < AllMethods.length) {
-				alias R = ReturnType!(AllMethods[idx]);
-				static if (is(R == interface)) {
+				alias SI = SubInterfaceType!(AllMethods[idx]);
+				static if (!is(SI == void)) {
 					alias Impl = TypeTuple!(AllMethods[idx], Impl!(idx+1));
 				} else {
 					alias Impl = Impl!(idx+1);
@@ -301,9 +301,9 @@ import vibe.web.rest;
 	private template GetSubInterfaceTypes() {
 		template Impl(size_t idx) {
 			static if (idx < AllMethods.length) {
-				alias R = ReturnType!(FunctionTypeOf!(AllMethods[idx]));
-				static if (is(R == interface)) {
-					alias Impl = TypeTuple!(R, Impl!(idx+1));
+				alias SI = SubInterfaceType!(AllMethods[idx]);
+				static if (!is(SI == void)) {
+					alias Impl = TypeTuple!(SI, Impl!(idx+1));
 				} else {
 					alias Impl = Impl!(idx+1);
 				}
@@ -316,7 +316,8 @@ import vibe.web.rest;
 		template Impl(size_t idx) {
 			static if (idx < AllMethods.length) {
 				alias F = AllMethods[idx];
-				static if (!is(ReturnType!(FunctionTypeOf!F) == interface))
+				alias SI = SubInterfaceType!F;
+				static if (is(SI == void))
 					alias Impl = TypeTuple!(F, Impl!(idx+1));
 				else alias Impl = Impl!(idx+1);
 			} else alias Impl = TypeTuple!();
@@ -392,6 +393,14 @@ enum ParameterKind {
 
 struct SubInterface {
 	RestInterfaceSettings settings;
+}
+
+template SubInterfaceType(alias F) {
+	import std.traits : ReturnType, isInstanceOf;
+	alias RT = ReturnType!F;
+	static if (is(RT == interface)) alias SubInterfaceType = RT;
+	else static if (isInstanceOf!(Collection, RT)) alias SubInterfaceType = RT.Interface;
+	else alias SubInterfaceType = void;
 }
 
 private bool extractPathParts(ref PathPart[] parts, string pattern)
