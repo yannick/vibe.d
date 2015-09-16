@@ -7,9 +7,10 @@ interface API {
 }
 
 interface ItemAPI {
-	alias ItemID = string;
+	struct ItemID {
+		string _item;
+	}
 
-	@path(":item/sub_items")
 	Collection!SubItemAPI subItems(string _item);
 	ItemManagerAPI manager();
 
@@ -17,12 +18,14 @@ interface ItemAPI {
 }
 
 interface SubItemAPI {
-	import std.typetuple;
-	alias ItemID = TypeTuple!(string, int);
+	struct ItemID {
+		string _item;
+		int _index;
+	}
 
 	@property uint length(string _item);
 
-	@method(HTTPMethod.GET) @path(":index/name")
+	@method(HTTPMethod.GET)
 	string name(string _item, int _index);
 }
 
